@@ -451,7 +451,8 @@
         codeTimeoutSec: 5, outputCompare: "trim", msqPartial: false, defaultNegative: 0, retestDays: 2, aiEnabled: true },
       cycles: [{ id: "mid", name: "Mid-Semester" }, { id: "ut2", name: "Unit Test 2" }],
       subjects: [{ id: "math", name: "Mathematics" }, { id: "python", name: "Python" }, { id: "fs", name: "Full Stack" }],
-      exams: EXAMS, syllabus: buildSyllabus(), questions: Q, seedCards: CARDS,
+      exams: EXAMS, syllabus: buildSyllabus(), questions: Q.concat(...(window.EF_PACKS || []).map((p) => p.questions)), seedCards: CARDS,
+      packs: (window.EF_PACKS || []).map((p) => p.id),
     }));
   };
 })();

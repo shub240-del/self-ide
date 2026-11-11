@@ -71,6 +71,15 @@ const Store = {
     c.settings = Object.assign({}, d.settings, c.settings || {});
     ["cycles", "subjects", "exams", "syllabus", "questions"].forEach((k) => { if (!Array.isArray(c[k])) c[k] = d[k]; });
     delete c.seedCards;
+    // question packs released after this config was created are added once (deleted questions are not re-added later)
+    c.packs = Array.isArray(c.packs) ? c.packs : [];
+    for (const pk of window.EF_PACKS || []) {
+      if (c.packs.includes(pk.id)) continue;
+      const have = new Set(c.questions.map((q) => q.id));
+      pk.questions.forEach((q) => { if (!have.has(q.id)) c.questions.push(JSON.parse(JSON.stringify(q))); });
+      c.packs.push(pk.id); this.packAdded = (this.packAdded || 0) + pk.questions.length;
+      if (this.db) this.touch("config");
+    }
     ["days", "mistakes", "cards", "sessions"].forEach((k) => { this.s[k] = this.s[k] || {}; });
     this.s.meta = Object.assign({ topicStatus: {}, opened: {}, activity: {} }, this.s.meta || {});
   },
