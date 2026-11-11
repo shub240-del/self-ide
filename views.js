@@ -8,7 +8,7 @@ function viewTutor() {
   const t = App.ui.tutor; if (!Cfg.subj(t.subject)) t.subject = Store.cfg.subjects[0]?.id;
   const topic = t.topicId ? Cfg.topic(t.topicId) : null; const st = topic ? Progress.topicStats(topic.id) : null;
   return `<div class="page-head"><div><h1>AI Tutor</h1><p class="muted">Explanations adapt to your recorded accuracy and mistakes on the chosen topic. When you are attempting a question, use the hints inside the Practice Arena instead — the tutor gives full explanations.</p></div></div>
-  ${AI.on ? "" : `<div class="card callout warn">Claude isn't available in this view (it needs the published page opened on claude.ai, with permission granted). Everything else in ExamForge works without it.</div>`}
+  ${AI.on ? "" : `<div class="card callout warn">AI isn't available here. On claude.ai it needs permission granted; on your own site it needs NVIDIA_API_KEY or ANTHROPIC_API_KEY set on the server. Everything else in ExamForge works without it.</div>`}
   <div class="tutor"><div class="card form">
     <label>Subject<select data-chg="tuSet" data-k="subject">${subjOpts(t.subject)}</select></label>
     <label>Topic<select data-chg="tuSet" data-k="topicId">${topicOpts(t.subject, "", t.topicId, false).replace(/^/, '<option value="">Choose a topic…</option>')}</select></label>
@@ -55,7 +55,7 @@ function viewCards() {
   <div class="row gap wrap"><select data-chg="cdSet" data-k="subject">${subjOpts(u.subject, true)}</select><select data-chg="cdSet" data-k="topicId">${topicOpts(u.subject, "", u.topicId)}</select>
   <div class="tabs inline">${[["review", `Review (${due.length} due)`], ["manage", `All cards (${all.length})`]].map(([k, l]) => `<button class="tab ${u.tab === k ? "on" : ""}" data-act="cdTab" data-arg="${k}">${l}</button>`).join("")}</div></div>`;
   if (u.tab === "manage") {
-    return head + `<div class="row gap mt"><button class="btn primary" data-act="cdNew">New card</button>${AI.on ? `<button class="btn" data-act="cdGen" ${u.topicId ? "" : "disabled title='Choose a topic first'"}>Generate for topic (Claude)</button>` : ""}</div>
+    return head + `<div class="row gap mt"><button class="btn primary" data-act="cdNew">New card</button>${AI.on ? `<button class="btn" data-act="cdGen" ${u.topicId ? "" : "disabled title='Choose a topic first'"}>Generate for topic (${AI.name})</button>` : ""}</div>
     <table class="tbl mt"><tr><th>Front</th><th>Topic</th><th>Status</th><th>Due</th><th></th></tr>${all.sort((a, b) => a.due.localeCompare(b.due)).map((c) => `<tr><td class="small">${md(c.front.slice(0, 220))}</td><td class="small">${esc(Cfg.topicName(c.topicId))}</td><td>${pill(c.status)} ${pill(c.source)}</td><td class="small">${c.due}</td><td class="nowrap"><button class="btn sm ghost" data-act="cdEdit" data-arg="${c.id}">Edit</button> <button class="btn sm ghost" data-act="cdDel" data-arg="${c.id}" aria-label="Delete">✕</button></td></tr>`).join("") || `<tr><td colspan="5" class="muted">No cards for this filter.</td></tr>`}</table>`;
   }
   if (!u.queue) { u.queue = U.shuffle(due.map((c) => c.id)); u.idx = 0; u.flipped = false; }
@@ -90,7 +90,7 @@ ACT.cdGen = async (el) => {
   const u = App.ui.cards; el.disabled = true; el.textContent = "Generating…";
   try { const cards = await AI.generateCards(u.topicId, 8); const t = Cfg.topic(u.topicId);
     cards.forEach((x) => { const id = U.uid("c"); Store.s.cards[id] = Object.assign({ id, subject: t.unit.subject, topicId: t.id, front: x.front, back: x.back, source: "ai", difficulty: "medium" }, SRS.blank()); Store.touch("cards:" + id); });
-    toast(`${cards.length} cards added. Review them for accuracy — they were written by Claude.`); }
+    toast(`${cards.length} cards added. Review them for accuracy — they were written by ${AI.name}.`); }
   catch (e) { toast(e.message, "bad"); }
   App.ui.cards.queue = null; rerender();
 };
@@ -112,7 +112,7 @@ function viewMistakes() {
     <div class="row gap wrap mt"><label class="small">Category <select class="mini" data-chg="mkCat" data-arg="${m.id}">${opts(Object.entries(MISTAKE_TYPES), m.category)}</select></label>
     <input class="grow small-in" placeholder="Your note (what to remember)" value="${esc(m.notes || "")}" data-chg="mkNote" data-arg="${m.id}">
     ${Cfg.q(m.qid) ? `<button class="btn sm" data-act="mkRetest" data-arg="${m.id}">Retest now</button>` : `<span class="muted small">question deleted</span>`}
-    ${AI.on ? `<button class="btn sm ghost" data-act="mkExplain" data-arg="${m.id}">Explain (Claude)</button>` : ""}
+    ${AI.on ? `<button class="btn sm ghost" data-act="mkExplain" data-arg="${m.id}">Explain (${AI.name})</button>` : ""}
     <button class="btn sm ghost" data-act="mkResolve" data-arg="${m.id}">${m.resolved ? "Reopen" : "Mark resolved"}</button><button class="btn sm ghost" data-act="mkDel" data-arg="${m.id}" aria-label="Delete">✕</button></div></div>`).join("") : `<div class="card empty">No mistakes for this filter${all.length ? "" : " yet — they'll appear here automatically as you practise"}.</div>`}`;
 }
 ACT.mkSet = (el) => { App.ui.mk[el.dataset.k] = el.value; rerender(); };
@@ -121,7 +121,7 @@ ACT.mkNote = (el) => { const m = Store.s.mistakes[el.dataset.arg]; m.notes = el.
 ACT.mkResolve = (el) => { const m = Store.s.mistakes[el.dataset.arg]; m.resolved = !m.resolved; if (!m.resolved) m.retestDue = U.today(); Store.touch("mistakes:" + m.id); renderShell(); rerender(); };
 ACT.mkDel = (el) => confirmDlg("Delete this mistake record?", () => { Store.remove("mistakes", el.dataset.arg); renderShell(); rerender(); }, "Delete");
 ACT.mkRetest = (el) => { const m = Store.s.mistakes[el.dataset.arg]; const q = Cfg.q(m.qid); newSession({ kind: "practice", mode: "retest", feedback: "instant", title: "Retest · " + (q.title || TYPE_LABEL[q.type]), items: [{ q: U.clone(q), marks: q.marks, negative: 0, section: "" }] }); };
-ACT.mkExplain = async (el) => { const m = Store.s.mistakes[el.dataset.arg]; const box = $("#mx-" + m.id); el.disabled = true; box.innerHTML = `<div class="muted small">Asking Claude…</div>`;
+ACT.mkExplain = async (el) => { const m = Store.s.mistakes[el.dataset.arg]; const box = $("#mx-" + m.id); el.disabled = true; box.innerHTML = `<div class="muted small">Asking ${AI.name}…</div>`;
   try { const t = await AI.explainMistake({ q: { prompt: m.prompt }, correct: m.correct, answer: m.answer }); box.innerHTML = `<div class="ai-box">${md(t)}</div>`; typeset(box); } catch (e) { box.innerHTML = `<div class="err small">${esc(e.message)}</div>`; } el.disabled = false; };
 
 /* ===================== Analytics ===================== */
@@ -254,13 +254,13 @@ function parsePlainSyllabus(text) {
 }
 ACT.suSylImport = () => {
   const u = App.ui.su;
-  const m = modal(`<h2>Import syllabus — ${esc(Cfg.subj(u.subject).name)} · ${esc(Cfg.cycle(u.cycle).name)}</h2><p class="small muted">Paste the syllabus. Plain format: one unit per line, subtopics indented or starting with “-”. Lines starting with “Part …” or “## …” set a group label.${AI.on ? " Or let Claude structure messy text (copied from a PDF)." : ""}</p>
+  const m = modal(`<h2>Import syllabus — ${esc(Cfg.subj(u.subject).name)} · ${esc(Cfg.cycle(u.cycle).name)}</h2><p class="small muted">Paste the syllabus. Plain format: one unit per line, subtopics indented or starting with “-”. Lines starting with “Part …” or “## …” set a group label.${AI.on ? " Or let " + AI.name + " structure messy text (copied from a PDF)." : ""}</p>
     <textarea id="imp" rows="12" placeholder="Part A — Bridge&#10;Numbers and Reasoning&#10;  - Word Problems decoding&#10;  - Number Theory and Mental Math"></textarea>
-    <div class="row gap mt"><button class="btn sm" id="imp-plain">Preview (plain)</button>${AI.on ? `<button class="btn sm ghost" id="imp-ai">Structure with Claude</button>` : ""}<label class="chk small"><input type="checkbox" id="imp-replace"> Replace existing units for this subject & cycle</label></div><div id="imp-prev" class="mt"></div>`,
+    <div class="row gap mt"><button class="btn sm" id="imp-plain">Preview (plain)</button>${AI.on ? `<button class="btn sm ghost" id="imp-ai">Structure with ${AI.name}</button>` : ""}<label class="chk small"><input type="checkbox" id="imp-replace"> Replace existing units for this subject & cycle</label></div><div id="imp-prev" class="mt"></div>`,
     { okText: "Import", wide: true, onOk: (m) => { const p = m._parsed; if (!p || !p.length) { toast("Preview first."); return false; } const c = Store.cfg; if ($("#imp-replace", m).checked) c.syllabus = c.syllabus.filter((x) => !(x.subject === u.subject && x.cycle === u.cycle)); p.forEach((x) => c.syllabus.push(newUnit(u.subject, u.cycle, x.title, x.group, x.subtopics))); saveCfg(); toast(`${p.length} units imported.`); rerender(); } });
   const show = (p) => { m._parsed = p; $("#imp-prev", m).innerHTML = p.length ? p.map((x) => `<div class="small">${x.group ? `<span class="muted">${esc(x.group)} · </span>` : ""}<strong>${esc(x.title)}</strong><ul>${x.subtopics.map((s) => `<li>${esc(s)}</li>`).join("")}</ul></div>`).join("") : `<p class="muted">Nothing parsed.</p>`; };
   $("#imp-plain", m).onclick = () => show(parsePlainSyllabus($("#imp", m).value));
-  const ai = $("#imp-ai", m); if (ai) ai.onclick = async () => { ai.disabled = true; ai.textContent = "Structuring…"; try { show(await AI.parseSyllabus($("#imp", m).value)); } catch (e) { toast(e.message, "bad"); } ai.disabled = false; ai.textContent = "Structure with Claude"; };
+  const ai = $("#imp-ai", m); if (ai) ai.onclick = async () => { ai.disabled = true; ai.textContent = "Structuring…"; try { show(await AI.parseSyllabus($("#imp", m).value)); } catch (e) { toast(e.message, "bad"); } ai.disabled = false; ai.textContent = "Structure with " + AI.name; };
 };
 
 /* ---- question bank ---- */
@@ -269,7 +269,7 @@ function setupBank() {
   const orphan = Store.cfg.questions.filter((q) => !Cfg.topic(q.topicId)).length;
   return `<div class="row gap wrap mt"><select data-chg="suQf" data-k="subject">${subjOpts(f.subject, true)}</select><select data-chg="suQf" data-k="cycle">${cycleOpts(f.cycle, true)}</select><select data-chg="suQf" data-k="topic">${topicOpts(f.subject, f.cycle, f.topic)}</select>
   <select data-chg="suQf" data-k="type">${typeOptsFor("", f.type)}</select><select data-chg="suQf" data-k="source">${opts([["", "Any source"], ["seed", "Starter"], ["manual", "Mine"], ["ai", "AI-generated"]], f.source)}</select></div>
-  <div class="row gap mt"><button class="btn primary sm" data-act="qNew">+ New question</button>${AI.on ? `<button class="btn sm" data-act="qGen">Generate with Claude</button>` : ""}<button class="btn sm ghost" data-act="qImport">Import JSON</button><button class="btn sm ghost" data-act="qExport">Export shown (${list.length})</button><span class="muted small">${Store.cfg.questions.length} questions total${orphan ? ` · ${orphan} not linked to a syllabus topic` : ""}</span></div>
+  <div class="row gap mt"><button class="btn primary sm" data-act="qNew">+ New question</button>${AI.on ? `<button class="btn sm" data-act="qGen">Generate with ${AI.name}</button>` : ""}<button class="btn sm ghost" data-act="qImport">Import JSON</button><button class="btn sm ghost" data-act="qExport">Export shown (${list.length})</button><span class="muted small">${Store.cfg.questions.length} questions total${orphan ? ` · ${orphan} not linked to a syllabus topic` : ""}</span></div>
   <table class="tbl mt"><tr><th>Question</th><th>Type</th><th>Topic</th><th>Marks</th><th>Source</th><th></th></tr>${list.map((q) => `<tr><td class="small"><strong>${esc(q.title || "")}</strong> ${esc(q.prompt.replace(/```[\s\S]*?```/g, "[code]").slice(0, 110))}</td><td class="small">${TYPE_LABEL[q.type]}${q.lang ? " · " + q.lang : ""}${q.lab ? " · " + q.lab : ""}</td><td class="small">${esc(Cfg.topicName(q.topicId))}</td><td>${q.marks}</td>
     <td>${pill(q.source === "seed" ? "starter" : q.source === "ai" ? (q.reviewed ? "AI · reviewed" : "AI · unreviewed") : "mine", q.source === "ai" && !q.reviewed ? "warn" : "")}</td>
     <td class="nowrap"><button class="btn sm ghost" data-act="qTry" data-arg="${q.id}">Try</button> <button class="btn sm ghost" data-act="qEdit" data-arg="${q.id}">Edit</button> <button class="btn sm ghost" data-act="qDup" data-arg="${q.id}">Copy</button> <button class="btn sm ghost" data-act="qDel" data-arg="${q.id}" aria-label="Delete">✕</button></td></tr>`).join("") || `<tr><td colspan="6" class="muted">No questions match.</td></tr>`}</table>`;
@@ -351,11 +351,11 @@ ACT.qfFill = async (el) => { const m = el.closest(".modal-back"); const msg = $(
 ACT.qfCheckRef = async (el) => { const m = el.closest(".modal-back"); const msg = $("#qf-fill-msg", m); try { const q = m._getQ(); msg.textContent = "Running checks…"; const r = await WebLab.runChecks(q, q.reference || {}); const bad = r.filter((c) => !c.pass); msg.textContent = bad.length ? `Reference fails ${bad.length}: ` + bad.map((c) => c.desc + (c.msg ? " (" + c.msg + ")" : "")).join("; ") : `All ${r.length} checks pass on the reference.`; } catch (e) { msg.textContent = e.message; } };
 function openGenerator(d = {}) {
   const subj = d.subject || Store.cfg.subjects[0].id;
-  const m = modal(`<h2>Generate questions with Claude</h2><p class="small muted">Questions stay inside the chosen syllabus topic. For coding and debugging, expected outputs are computed by actually running Claude's reference solution — anything that fails to run is discarded. Generated questions are marked “AI · unreviewed” until you edit and save them.</p>
+  const m = modal(`<h2>Generate questions with ${AI.name}</h2><p class="small muted">Questions stay inside the chosen syllabus topic. For coding and debugging, expected outputs are computed by actually running the AI's reference solution — anything that fails to run is discarded. Generated questions are marked “AI · unreviewed” until you edit and save them.</p>
     <div class="form"><div class="row gap"><label>Subject<select id="g-subj">${subjOpts(subj)}</select></label><label class="grow">Topic<select id="g-topic">${topicOpts(subj, "", d.topicId, false)}</select></label></div>
     <div class="row gap"><label>Type<select id="g-type">${opts(["mcq", "msq", "numerical", "output", "subjective", "coding", "debug"].map((t) => [t, TYPE_LABEL[t]]), TYPE_FIELDS[d.type] && d.type !== "web" ? d.type : "mcq")}</select></label><label>Language (code)<select id="g-lang">${opts([["python", "Python"], ["js", "JavaScript"]], subj === "fs" ? "js" : "python")}</select></label><label>Difficulty<select id="g-diff">${diffOpts("medium", false)}</select></label><label>How many<input id="g-n" type="number" min="1" max="10" value="5"></label></div></div><div id="g-msg" class="small mt"></div>`,
     { okText: "Generate", onOk: async (m) => {
-      const ok = $("[data-m=ok]", m); ok.disabled = true; const msg = $("#g-msg", m); msg.textContent = "Claude is writing questions…";
+      const ok = $("[data-m=ok]", m); ok.disabled = true; const msg = $("#g-msg", m); msg.textContent = AI.name + " is writing questions…";
       try { const topicId = $("#g-topic", m).value; if (!topicId) throw new Error("Choose a topic.");
         const qs = await AI.generateQuestions({ subject: $("#g-subj", m).value, topicId, type: $("#g-type", m).value, difficulty: $("#g-diff", m).value, count: U.clamp(+$("#g-n", m).value || 5, 1, 10), lang: $("#g-lang", m).value });
         qs.forEach((q) => Store.cfg.questions.push(q)); saveCfg(); toast(`${qs.length} question(s) added to your bank.`); rerender(); return true; }
@@ -372,7 +372,7 @@ function setupRules() {
   <div class="card form"><h2>Marking</h2><label>Multiple-select partial marks<select data-chg="suRule" data-k="msqPartial">${opts([["false", "No — all-or-nothing"], ["true", "Yes — proportional if no wrong option picked"]], String(S.msqPartial))}</select></label>
   <label>Default output comparison for code<select data-chg="suRule" data-k="outputCompare">${opts([["trim", "Ignore trailing whitespace"], ["exact", "Exact"], ["tokens", "Whitespace-insensitive"]], S.outputCompare)}</select></label>${f("codeTimeoutSec", "Time limit per test case (seconds)", "number", 'min="1" max="30"')}
   <p class="muted small">Negative marking is set per exam section (Calendar & patterns) or when starting an exam.</p></div>
-  <div class="card form"><h2>AI (Claude)</h2><label>Use Claude for marking, hints, tutoring and generation<select data-chg="suRule" data-k="aiEnabled">${opts([["true", "On (when available)"], ["false", "Off — self-marking only"]], String(S.aiEnabled !== false))}</select></label><p class="muted small">Status: ${AI.mode === "claude.ai" ? (AI.denied ? "permission declined" : "connected through claude.ai") : AI.mode === "server" ? "connected through this site's Claude API key" : AI.server && !AI.server.configured ? "server found, but ANTHROPIC_API_KEY is not set" : "not available in this view"}. With AI off, subjective answers and debugging explanations are self-marked against the rubric.</p>
+  <div class="card form"><h2>AI (${AI.name})</h2><label>Use AI for marking, hints, tutoring and generation<select data-chg="suRule" data-k="aiEnabled">${opts([["true", "On (when available)"], ["false", "Off — self-marking only"]], String(S.aiEnabled !== false))}</select></label><p class="muted small">Status: ${AI.mode === "claude.ai" ? (AI.denied ? "permission declined" : "connected through claude.ai") : AI.mode === "server" ? "connected through this site's " + (AI.server && AI.server.provider === "nvidia" ? "NVIDIA" : "Claude") + " API key (" + esc(AI.server.model || "") + ")" : AI.server && !AI.server.configured ? "server found, but no NVIDIA_API_KEY or ANTHROPIC_API_KEY is set" : "not available in this view"}. With AI off, subjective answers and debugging explanations are self-marked against the rubric.</p>
   ${AI.mode === "server" && AI.server && AI.server.passcodeRequired ? `<label>Site passcode (set as APP_PASSCODE in Vercel)<input type="password" value="${esc(AI.passcode)}" data-chg="suPass" autocomplete="off"></label><p class="muted small">Stored only in this browser.</p>` : ""}</div></div>`;
 }
 ACT.suPass = (el) => { AI.passcode = el.value.trim(); toast("Passcode saved in this browser."); };

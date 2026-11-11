@@ -80,7 +80,7 @@ const VIEWS = [
 function renderShell() {
   $("#nav").innerHTML = VIEWS.map(([id, label, ic]) => `<a href="#${id}" class="nav-item ${App.view === id ? "on" : ""}" data-view="${id}"><span class="ic">${ic}</span><span>${label}</span>${id === "mistakes" ? badge(Progress.dueRetests().length) : id === "flashcards" ? badge(Progress.dueCards().length) : ""}</a>`).join("");
   $("#sync").textContent = Store.status; $("#sync").className = "sync " + (Store.mode === "cloud" ? "ok" : "warn");
-  $("#ai-state").innerHTML = AI.on ? `<span class="dot ok"></span>Claude connected${AI.mode === "server" ? " (API key)" : ""}` : `<span class="dot"></span>${AI.checked ? "AI unavailable here" : "Checking AI…"}`;
+  $("#ai-state").innerHTML = AI.on ? `<span class="dot ok"></span>${AI.name} connected${AI.mode === "server" ? " (API key" + (AI.server && AI.server.model ? " · " + esc(AI.server.model) : "") + ")" : ""}` : `<span class="dot"></span>${AI.checked ? "AI unavailable here" : "Checking AI…"}`;
 }
 const badge = (n) => (n ? `<span class="badge">${n}</span>` : "");
 function go(view) { if (location.hash !== "#" + view) location.hash = view; else route(); }
@@ -251,7 +251,7 @@ function viewPractice() {
     <div class="row gap"><label>Number of questions<input type="number" min="1" max="100" value="${p.count}" data-chg="prSet" data-k="count"></label><label>Time limit (min, 0 = none)<input type="number" min="0" value="${p.time}" data-chg="prSet" data-k="time"></label></div>
     <label>Feedback<select data-chg="prSet" data-k="feedback">${opts([["instant", "Instant — check each answer, hints, retry"], ["end", "At the end — like a test"]], p.feedback)}</select></label>
     <p class="small ${avail < p.count ? "warn-text" : "muted"}">${avail} matching question${avail === 1 ? "" : "s"} in your bank${avail < p.count ? ` — fewer than ${p.count} requested.` : "."}</p>
-    <div class="row gap"><button class="btn primary" data-act="startPractice" ${avail ? "" : "disabled"}>Start practice</button>${AI.on ? `<button class="btn ghost" data-act="aiGenFromPractice">Generate questions with Claude</button>` : ""}</div>
+    <div class="row gap"><button class="btn primary" data-act="startPractice" ${avail ? "" : "disabled"}>Start practice</button>${AI.on ? `<button class="btn ghost" data-act="aiGenFromPractice">Generate questions with ${AI.name}</button>` : ""}</div>
   </div>
   <div class="card"><h2>What's in your bank</h2><table class="tbl">${typeTable}</table><p class="muted small mt">Add your own questions, change marks, or import a whole bank in <a href="#exam-setup">Exam Setup → Question bank</a>.</p>
   ${Progress.dueRetests().length ? `<div class="callout mt">You have ${Progress.dueRetests().length} mistake retest(s) due. <button class="btn sm" data-act="retestDue">Retest now</button></div>` : ""}</div></div>`;
@@ -374,7 +374,7 @@ function questionPane(s, it, res) {
   const hintsUsed = s.hints[q.id] || 0; const hintList = (q.hints || []);
   const canHint = s.feedback === "instant" && !locked;
   const hints = s.feedback === "instant" ? `<div class="hints">${(s.hintText && s.hintText[q.id] || []).map((h, k) => `<div class="hint"><div class="eyebrow">${["Hint 1 · direction", "Hint 2 · method", "Hint 3 · next step", "Full solution"][k]}</div>${md(h)}</div>`).join("")}
-    ${canHint && hintsUsed < 4 ? `<button class="btn sm ghost" data-act="hint">${hintsUsed < 3 ? `Hint ${hintsUsed + 1}` : "Show full solution"}${hintsUsed >= 3 || hintList[hintsUsed] ? "" : AI.on ? " (Claude)" : ""}</button>` : ""}</div>` : "";
+    ${canHint && hintsUsed < 4 ? `<button class="btn sm ghost" data-act="hint">${hintsUsed < 3 ? `Hint ${hintsUsed + 1}` : "Show full solution"}${hintsUsed >= 3 || hintList[hintsUsed] ? "" : AI.on ? " (" + AI.name + ")" : ""}</button>` : ""}</div>` : "";
   const ctrl = `<div class="q-ctrl row between"><div class="row gap"><button class="btn ghost" data-act="prevQ" ${i === 0 ? "disabled" : ""}>← Previous</button><button class="btn ghost" data-act="nextQ" ${i === s.items.length - 1 ? "disabled" : ""}>Next →</button></div>
     ${s.feedback === "instant" ? (locked ? `<button class="btn" data-act="retryQ">Retry</button>` : `<button class="btn primary" data-act="checkQ">Check answer</button>`) : ""}</div>`;
   return head + body + hints + `<div id="qresult">${res && s.feedback === "instant" && !res.retry ? resultBlock(q, res, a, { session: s }) : ""}</div>` + ctrl;
@@ -403,7 +403,7 @@ function codingWidget(q, a, locked, s) {
   <div class="q-work">${editor("code-in", code, { ro: locked, rows: Math.max(10, code.split("\n").length + 3), lang })}
   ${q.type === "debug" ? `<label class="ans-label">Explain the bug(s) and your fix<textarea rows="4" data-inp="ansExpl" ${locked ? "disabled" : ""}>${esc(a.explanation || "")}</textarea></label>` : ""}
   <div class="row gap wrap mt">${lang === "python" ? `<label class="grow small">Custom input (stdin)<textarea id="stdin-in" class="mono" rows="2" spellcheck="false">${esc(App.ui.stdin?.[q.id] ?? q.sampleInput ?? "")}</textarea></label>` : `<label class="grow small">Expression to evaluate (optional)<input id="stdin-in" class="mono" value="${esc(App.ui.stdin?.[q.id] ?? q.sampleInput ?? "")}"></label>`}
-  <div class="col gap"><button class="btn" data-act="runCustom" title="Ctrl+Enter in the editor">▶ Run</button><button class="btn" data-act="runVisible">Run visible tests</button>${AI.on && s.feedback === "instant" ? `<button class="btn ghost sm" data-act="codeReview">Code review (Claude)</button>` : ""}</div></div>
+  <div class="col gap"><button class="btn" data-act="runCustom" title="Ctrl+Enter in the editor">▶ Run</button><button class="btn" data-act="runVisible">Run visible tests</button>${AI.on && s.feedback === "instant" ? `<button class="btn ghost sm" data-act="codeReview">Code review (${AI.name})</button>` : ""}</div></div>
   <div id="run-out" class="console"></div>${lang === "python" ? `<div class="muted small" id="py-state">${pyStateText()}</div>` : ""}</div>`;
 }
 function pyStateText() { return { idle: "Python runs in your browser (Pyodide). First run downloads the runtime (~10 MB).", loading: "Loading Python runtime…", ready: "Python ready.", error: "Python runtime failed to load: " + (PyRunner.error || "") }[PyRunner.state]; }
@@ -466,8 +466,8 @@ function testTable(tests, revealHidden = true) {
   }).join("")}</table>`;
 }
 ACT.codeReview = async (el) => {
-  const q = curItem().q; const code = $("#code-in").value; const out = $("#run-out"); el.disabled = true; out.innerHTML = `<div class="muted">Asking Claude for a review…</div>`;
-  try { const res = await Grader.runTests(q, code, { visibleOnly: true }); const txt = await AI.codeReview(q, code, `${res.filter((r) => r.pass).length}/${res.length} visible tests passed`); out.innerHTML = `<div class="ai-box"><div class="eyebrow">Code quality feedback · Claude</div>${md(txt)}</div>`; }
+  const q = curItem().q; const code = $("#code-in").value; const out = $("#run-out"); el.disabled = true; out.innerHTML = `<div class="muted">Asking ${AI.name} for a review…</div>`;
+  try { const res = await Grader.runTests(q, code, { visibleOnly: true }); const txt = await AI.codeReview(q, code, `${res.filter((r) => r.pass).length}/${res.length} visible tests passed`); out.innerHTML = `<div class="ai-box"><div class="eyebrow">Code quality feedback · ${AI.name}</div>${md(txt)}</div>`; }
   catch (e) { out.innerHTML = `<div class="err">${esc(e.message)}</div>`; } el.disabled = false;
 };
 ACT.webTab = (el) => { App.ui.webTab = el.dataset.arg; rerenderPane(); };
@@ -496,7 +496,7 @@ ACT.hint = async (el) => {
 ACT.checkQ = async (el) => {
   const s = App.session, it = curItem(), q = it.q; const a = s.answers[q.id];
   if (!hasAnswer(q, a)) return toast("Answer the question first.");
-  el.disabled = true; el.textContent = q.type === "subjective" && AI.on ? "Claude is marking…" : "Checking…";
+  el.disabled = true; el.textContent = q.type === "subjective" && AI.on ? AI.name + " is marking…" : "Checking…";
   const res = await Grader.grade(q, a, { negative: it.negative });
   res.correctText = Progress.correctText(q);
   if ((s.hints[q.id] || 0) >= 4) res.assisted = true;
@@ -511,7 +511,7 @@ function resultBlock(q, res, a, { session, idx } = {}) {
   let h = `<div class="result ${cls}"><div class="row between"><strong>${{ correct: "Correct", partial: "Partially correct", wrong: "Incorrect", unanswered: "Not answered", pending: "Awaiting marking", error: "Could not evaluate" }[res.status]}</strong><span>${res.status === "pending" ? "" : fmtScore(res.score) + " / " + res.max + " marks"}${res.assisted ? " · used full solution" : ""}</span></div>`;
   if (res.detail) h += `<p class="small">${esc(res.detail)}</p>`;
   if (res.tests) h += testTable(res.tests, true);
-  if (res.reasoning) h += `<div class="small mt"><strong>Explanation:</strong> ${res.reasoning.by === "ai" ? `${U.pct(res.reasoning.score)} (marked by Claude) — ${esc(res.reasoning.comment)}` : esc(res.reasoning.comment || "")}</div>`;
+  if (res.reasoning) h += `<div class="small mt"><strong>Explanation:</strong> ${res.reasoning.by === "ai" ? `${U.pct(res.reasoning.score)} (marked by ${AI.name}) — ${esc(res.reasoning.comment)}` : esc(res.reasoning.comment || "")}</div>`;
   if (res.checks) h += checksTable(res.checks) + (res.audit && res.audit.length ? `<details class="small"><summary>Structure & accessibility audit (${res.audit.length} note${res.audit.length > 1 ? "s" : ""}, not marked)</summary><ul>${res.audit.map((n) => `<li>${esc(n)}</li>`).join("")}</ul></details>` : "");
   if (res.ai) {
     h += `<table class="tbl mt"><tr><th>Criterion</th><th>Marks</th><th>Comment</th></tr>${res.ai.criteria.map((c) => `<tr><td>${esc(c.criterion)}</td><td>${fmtScore(c.awarded)}/${c.max}</td><td class="small">${md(c.comment)}</td></tr>`).join("")}</table>`;
@@ -519,7 +519,7 @@ function resultBlock(q, res, a, { session, idx } = {}) {
     if (res.ai.errorType && res.ai.errorType !== "none") h += `<p class="small"><strong>Error type:</strong> ${esc(res.ai.errorType)}</p>`;
     if (res.ai.unsupported && res.ai.unsupported.length) h += `<p class="small"><strong>Unsupported conclusions:</strong> ${res.ai.unsupported.map(esc).join("; ")}</p>`;
     if (res.ai.feedback) h += `<div class="small">${md(res.ai.feedback)}</div>`;
-    h += `<p class="muted small">Marked by Claude against the rubric (confidence: ${esc(res.ai.confidence)}). AI marking can be wrong — compare with the model solution and override below if needed.</p>`;
+    h += `<p class="muted small">Marked by ${AI.name} against the rubric (confidence: ${esc(res.ai.confidence)}). AI marking can be wrong — compare with the model solution and override below if needed.</p>`;
   }
   if (q.type === "subjective" && (res.status === "pending" || res.ai)) {
     h += `<details ${res.status === "pending" ? "open" : ""} class="selfmark"><summary>${res.status === "pending" ? "Self-mark against the rubric" : "Override marks"}</summary><table class="tbl">${(q.rubric || []).map((r, k) => `<tr><td>${esc(r.criterion)}</td><td><input type="number" class="sm-in" min="0" max="${r.marks}" step="0.5" value="${res.ai ? res.ai.criteria[k].awarded : 0}" data-k="${k}"> / ${r.marks}</td></tr>`).join("")}</table><button class="btn sm" data-act="selfMark" data-arg="${q.id}" data-session="${session ? session.id : ""}">Save marks</button></details>`;
@@ -567,7 +567,7 @@ async function gradeAll(s, all) {
   const pane = $("#qpane"); let n = 0;
   for (const it of s.items) {
     const q = it.q; n++; if (!all && s.results[q.id]) continue;
-    if (pane) pane.innerHTML = `<div class="grading"><div class="spinner"></div><p>Evaluating ${n} of ${s.items.length}… ${q.type === "subjective" && AI.on ? "(Claude is marking a subjective answer)" : q.type === "coding" ? "(running test cases)" : q.type === "web" ? "(running functional checks)" : ""}</p></div>`;
+    if (pane) pane.innerHTML = `<div class="grading"><div class="spinner"></div><p>Evaluating ${n} of ${s.items.length}… ${q.type === "subjective" && AI.on ? "(" + AI.name + " is marking a subjective answer)" : q.type === "coding" ? "(running test cases)" : q.type === "web" ? "(running functional checks)" : ""}</p></div>`;
     const a = s.answers[q.id];
     const res = await Grader.grade(q, a, { negative: it.negative }); res.correctText = Progress.correctText(q); s.results[q.id] = res;
     if (res.status !== "pending" && res.status !== "error") { const att = Progress.record(q, res, { mode: s.kind === "exam" ? "exam" : "practice", timeSec: s.timeSpent[q.id] || 0, answer: a, sessionId: s.id, timeUp: !!s.timeUp }); if (att) res.attemptId = att.id; }

@@ -408,6 +408,7 @@ window.__efLabLog = (ch, k, m) => { const s = window.__efLabSinks && window.__ef
 const AI = {
   fn: null, checked: false, denied: false, mode: "none", server: null, // mode: "claude.ai" | "server" | "none"
   PASS_KEY: "examforge.passcode",
+  get name() { return this.mode === "server" && this.server && this.server.provider === "nvidia" ? "NVIDIA AI" : "Claude"; },
   get passcode() { try { return localStorage.getItem(this.PASS_KEY) || ""; } catch (e) { return ""; } },
   set passcode(v) { try { localStorage.setItem(this.PASS_KEY, v || ""); } catch (e) {} },
   async init() {
@@ -415,7 +416,7 @@ const AI = {
     if (this.fn) { this.mode = "claude.ai"; this.checked = true; return; }
     // Not on claude.ai (e.g. the Vercel deployment): use the /api/claude server function if it is configured.
     try {
-      const r = await fetch("api/claude", { method: "GET", headers: { accept: "application/json" } });
+      const r = await fetch("api/ai", { method: "GET", headers: { accept: "application/json" } });
       const st = r.ok ? await r.json() : null;
       this.server = st;
       if (st && st.configured) { this.fn = this.serverFn(); this.mode = "server"; }
@@ -425,10 +426,10 @@ const AI = {
   serverFn() {
     const call = async (input, opts = {}) => {
       const msgs = typeof input === "string" ? [{ role: "user", content: input }] : input.map((m) => ({ role: m.role, content: String(m.content) }));
-      const r = await fetch("api/claude", { method: "POST", headers: { "content-type": "application/json", "x-app-passcode": this.passcode }, signal: opts.signal,
+      const r = await fetch("api/ai", { method: "POST", headers: { "content-type": "application/json", "x-app-passcode": this.passcode }, signal: opts.signal,
         body: JSON.stringify({ messages: msgs, tier: opts.modelTier || "default", maxTokens: opts.maxTokens || 4096 }) });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw { code: d.code || (r.status === 429 ? "rate_limited" : "api_error"), message: d.error || "Claude API error " + r.status };
+      if (!r.ok) throw { code: d.code || (r.status === 429 ? "rate_limited" : "api_error"), message: d.error || AI.name + " error " + r.status };
       if (opts.onText) opts.onText({ text: d.text, delta: d.text });
       return { text: d.text, truncated: d.stop_reason === "max_tokens" };
     };
@@ -444,14 +445,14 @@ const AI = {
     try { return JSON.parse(t); } catch (e) {}
     const a = t.search(/[[{]/); const b = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
     if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch (e) {} }
-    throw { code: "bad_json", message: "Claude returned an answer that wasn't valid JSON — try again." };
+    throw { code: "bad_json", message: AI.name + " returned an answer that wasn't valid JSON — try again." };
   },
   get on() { return !!this.fn && !this.denied && Store.cfg.settings.aiEnabled !== false; },
   err(e) {
     if (e && e.code === "not_granted") this.denied = true;
-    if (e && e.code === "passcode") return "This deployment needs a passcode for Claude — enter it in Exam Setup → Rules & settings.";
-    if (e && e.code === "bad_key") return "The server's Claude API key was rejected — check ANTHROPIC_API_KEY in Vercel.";
-    return e && e.code === "rate_limited" ? "Claude is rate-limited right now — try again in a minute." : (e && e.message) || "Claude could not answer.";
+    if (e && e.code === "passcode") return "This site needs a passcode for AI features — enter it in Exam Setup → Rules & settings.";
+    if (e && e.code === "bad_key") return `The server's ${this.server && this.server.provider === "nvidia" ? "NVIDIA_API_KEY" : "ANTHROPIC_API_KEY"} was rejected — check it in Vercel. (${(e && e.message) || ""})`;
+    return e && e.code === "rate_limited" ? this.name + " is rate-limited right now — try again in a minute." : (e && e.message) || this.name + " could not answer.";
   },
   async text(input, opts = {}) { if (!this.on) throw new Error("AI unavailable"); try { const r = await this.fn(input, Object.assign({ cache: false }, opts)); return r.text; } catch (e) { throw new Error(this.err(e)); } },
   async json(input, opts = {}) { if (!this.on) throw new Error("AI unavailable"); try { return await this.fn.json(input, Object.assign({ cache: false }, opts)); } catch (e) { throw new Error(this.err(e)); } },
