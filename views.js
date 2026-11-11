@@ -372,8 +372,10 @@ function setupRules() {
   <div class="card form"><h2>Marking</h2><label>Multiple-select partial marks<select data-chg="suRule" data-k="msqPartial">${opts([["false", "No — all-or-nothing"], ["true", "Yes — proportional if no wrong option picked"]], String(S.msqPartial))}</select></label>
   <label>Default output comparison for code<select data-chg="suRule" data-k="outputCompare">${opts([["trim", "Ignore trailing whitespace"], ["exact", "Exact"], ["tokens", "Whitespace-insensitive"]], S.outputCompare)}</select></label>${f("codeTimeoutSec", "Time limit per test case (seconds)", "number", 'min="1" max="30"')}
   <p class="muted small">Negative marking is set per exam section (Calendar & patterns) or when starting an exam.</p></div>
-  <div class="card form"><h2>AI (Claude)</h2><label>Use Claude for marking, hints, tutoring and generation<select data-chg="suRule" data-k="aiEnabled">${opts([["true", "On (when available)"], ["false", "Off — self-marking only"]], String(S.aiEnabled !== false))}</select></label><p class="muted small">Status: ${AI.fn ? (AI.denied ? "permission declined" : "available") : "not available in this view"}. With AI off, subjective answers and debugging explanations are self-marked against the rubric.</p></div></div>`;
+  <div class="card form"><h2>AI (Claude)</h2><label>Use Claude for marking, hints, tutoring and generation<select data-chg="suRule" data-k="aiEnabled">${opts([["true", "On (when available)"], ["false", "Off — self-marking only"]], String(S.aiEnabled !== false))}</select></label><p class="muted small">Status: ${AI.mode === "claude.ai" ? (AI.denied ? "permission declined" : "connected through claude.ai") : AI.mode === "server" ? "connected through this site's Claude API key" : AI.server && !AI.server.configured ? "server found, but ANTHROPIC_API_KEY is not set" : "not available in this view"}. With AI off, subjective answers and debugging explanations are self-marked against the rubric.</p>
+  ${AI.mode === "server" && AI.server && AI.server.passcodeRequired ? `<label>Site passcode (set as APP_PASSCODE in Vercel)<input type="password" value="${esc(AI.passcode)}" data-chg="suPass" autocomplete="off"></label><p class="muted small">Stored only in this browser.</p>` : ""}</div></div>`;
 }
+ACT.suPass = (el) => { AI.passcode = el.value.trim(); toast("Passcode saved in this browser."); };
 ACT.suRule = (el) => { const S = Store.cfg.settings; const k = el.dataset.k; let v = el.value; if (["msqPartial", "aiEnabled"].includes(k)) v = v === "true"; else if (el.type === "number") v = el.dataset.pct ? U.clamp(+v / 100, 0.01, 1) : Math.max(1, +v || 1); S[k] = v; saveCfg(); renderShell(); };
 
 /* ---- backup ---- */
@@ -381,6 +383,9 @@ async function exportJson(name, obj) {
   const text = JSON.stringify(obj, null, 1);
   let dl = null; try { dl = await window.claude?.use?.("downloads"); } catch (e) {}
   if (dl) { try { await dl.save({ filename: name, data: text }); toast("Saved " + name); return; } catch (e) { if (e && e.code !== "declined") toast("Download failed — showing the JSON to copy instead."); else return; } }
+  if (!dl && !(window.claude && window.claude.use)) { // ordinary website (e.g. Vercel): a normal browser download works
+    try { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "application/json" })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); toast("Downloaded " + name); return; } catch (e) {}
+  }
   const m = modal(`<h2>${esc(name)}</h2><p class="small muted">Copy this JSON and save it somewhere safe.</p><textarea class="mono" rows="14" readonly>${esc(text)}</textarea>`, { okText: "Copy", onOk: async (m) => { try { await navigator.clipboard.writeText(text); toast("Copied."); } catch (e) { $("textarea", m).select(); toast("Select-all is ready — press Ctrl+C."); return false; } } });
 }
 function importJson(title, apply) {

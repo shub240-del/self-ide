@@ -80,7 +80,7 @@ const VIEWS = [
 function renderShell() {
   $("#nav").innerHTML = VIEWS.map(([id, label, ic]) => `<a href="#${id}" class="nav-item ${App.view === id ? "on" : ""}" data-view="${id}"><span class="ic">${ic}</span><span>${label}</span>${id === "mistakes" ? badge(Progress.dueRetests().length) : id === "flashcards" ? badge(Progress.dueCards().length) : ""}</a>`).join("");
   $("#sync").textContent = Store.status; $("#sync").className = "sync " + (Store.mode === "cloud" ? "ok" : "warn");
-  $("#ai-state").innerHTML = AI.on ? `<span class="dot ok"></span>Claude connected` : `<span class="dot"></span>${AI.checked ? "AI unavailable here" : "Checking AI…"}`;
+  $("#ai-state").innerHTML = AI.on ? `<span class="dot ok"></span>Claude connected${AI.mode === "server" ? " (API key)" : ""}` : `<span class="dot"></span>${AI.checked ? "AI unavailable here" : "Checking AI…"}`;
 }
 const badge = (n) => (n ? `<span class="badge">${n}</span>` : "");
 function go(view) { if (location.hash !== "#" + view) location.hash = view; else route(); }

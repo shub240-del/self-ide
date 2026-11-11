@@ -406,10 +406,53 @@ window.__efLabLog = (ch, k, m) => { const s = window.__efLabSinks && window.__ef
 
 /* ===================== AI (Claude via the page's sample capability) ===================== */
 const AI = {
-  fn: null, checked: false, denied: false,
-  async init() { try { if (window.claude && window.claude.use) this.fn = await window.claude.use("sample"); } catch (e) { this.fn = null; } this.checked = true; },
+  fn: null, checked: false, denied: false, mode: "none", server: null, // mode: "claude.ai" | "server" | "none"
+  PASS_KEY: "examforge.passcode",
+  get passcode() { try { return localStorage.getItem(this.PASS_KEY) || ""; } catch (e) { return ""; } },
+  set passcode(v) { try { localStorage.setItem(this.PASS_KEY, v || ""); } catch (e) {} },
+  async init() {
+    try { if (window.claude && window.claude.use) this.fn = await window.claude.use("sample"); } catch (e) { this.fn = null; }
+    if (this.fn) { this.mode = "claude.ai"; this.checked = true; return; }
+    // Not on claude.ai (e.g. the Vercel deployment): use the /api/claude server function if it is configured.
+    try {
+      const r = await fetch("api/claude", { method: "GET", headers: { accept: "application/json" } });
+      const st = r.ok ? await r.json() : null;
+      this.server = st;
+      if (st && st.configured) { this.fn = this.serverFn(); this.mode = "server"; }
+    } catch (e) { this.server = null; }
+    this.checked = true;
+  },
+  serverFn() {
+    const call = async (input, opts = {}) => {
+      const msgs = typeof input === "string" ? [{ role: "user", content: input }] : input.map((m) => ({ role: m.role, content: String(m.content) }));
+      const r = await fetch("api/claude", { method: "POST", headers: { "content-type": "application/json", "x-app-passcode": this.passcode }, signal: opts.signal,
+        body: JSON.stringify({ messages: msgs, tier: opts.modelTier || "default", maxTokens: opts.maxTokens || 4096 }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw { code: d.code || (r.status === 429 ? "rate_limited" : "api_error"), message: d.error || "Claude API error " + r.status };
+      if (opts.onText) opts.onText({ text: d.text, delta: d.text });
+      return { text: d.text, truncated: d.stop_reason === "max_tokens" };
+    };
+    call.json = async (input, opts = {}) => {
+      const p = typeof input === "string" ? input + "\n\nRespond with a single valid JSON value only — no prose, no code fences." : input;
+      const { text } = await call(p, Object.assign({ maxTokens: 8192 }, opts));
+      return AI.parseJson(text);
+    };
+    return call;
+  },
+  parseJson(text) {
+    let t = String(text || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+    try { return JSON.parse(t); } catch (e) {}
+    const a = t.search(/[[{]/); const b = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
+    if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch (e) {} }
+    throw { code: "bad_json", message: "Claude returned an answer that wasn't valid JSON — try again." };
+  },
   get on() { return !!this.fn && !this.denied && Store.cfg.settings.aiEnabled !== false; },
-  err(e) { if (e && (e.code === "not_granted")) this.denied = true; return e && e.code === "rate_limited" ? "Claude is rate-limited right now — try again in a minute." : (e && e.message) || "Claude could not answer."; },
+  err(e) {
+    if (e && e.code === "not_granted") this.denied = true;
+    if (e && e.code === "passcode") return "This deployment needs a passcode for Claude — enter it in Exam Setup → Rules & settings.";
+    if (e && e.code === "bad_key") return "The server's Claude API key was rejected — check ANTHROPIC_API_KEY in Vercel.";
+    return e && e.code === "rate_limited" ? "Claude is rate-limited right now — try again in a minute." : (e && e.message) || "Claude could not answer.";
+  },
   async text(input, opts = {}) { if (!this.on) throw new Error("AI unavailable"); try { const r = await this.fn(input, Object.assign({ cache: false }, opts)); return r.text; } catch (e) { throw new Error(this.err(e)); } },
   async json(input, opts = {}) { if (!this.on) throw new Error("AI unavailable"); try { return await this.fn.json(input, Object.assign({ cache: false }, opts)); } catch (e) { throw new Error(this.err(e)); } },
 
